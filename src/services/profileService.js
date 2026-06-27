@@ -82,7 +82,25 @@ export async function replacePhotos(userId, photos) {
     .order("upload_order", { ascending: true });
 
   if (error) throw new ApiError(400, "Unable to save photos", { message: error.message, details: error.details });
+  await markOnboardingComplete(userId);
   return data ?? [];
+}
+
+async function markOnboardingComplete(userId) {
+  const { error } = await supabase
+    .from("users")
+    .update({
+      onboarding_completed: true,
+      current_step: 0
+    })
+    .eq("id", userId);
+
+  if (error) {
+    throw new ApiError(400, "Unable to update onboarding status", {
+      message: error.message,
+      details: error.details
+    });
+  }
 }
 
 export async function getMeProfile(userId) {
