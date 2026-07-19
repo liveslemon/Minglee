@@ -5,7 +5,7 @@ export const profileSchema = z
     gender: z.string().min(1).max(40).optional(),
     age: z.number().int().min(18).optional(),
     height: z.number().int().min(50).max(260).optional(),
-    build: z.enum(["Slim", "Athletic", "Average", "Curvy"]).optional(),
+    build: z.enum(["Slim", "Petite", "Athletic", "Average", "Muscular", "Curvy", "Plus-size"]).optional(),
     skin_tone: z.string().min(1).max(60).optional(),
     personal_style: z.string().min(1).max(80).optional(),
     social_persona: z.string().min(1).max(80).optional(),
@@ -67,7 +67,7 @@ export const focusesSchema = z
 
 export const preferredBuildsSchema = z
   .object({
-    builds: z.array(z.enum(["Slim", "Athletic", "Average", "Curvy"])).min(1).max(4)
+    builds: z.array(z.enum(["Slim", "Petite", "Athletic", "Average", "Muscular", "Curvy", "Plus-size"])).min(1).max(7)
   })
   .strict();
 
