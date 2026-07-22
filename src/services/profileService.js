@@ -139,14 +139,14 @@ async function markOnboardingComplete(userId) {
     .from("users")
     .update({
       onboarding_completed: true,
-      current_step: 0
+      current_step: 0,
     })
     .eq("id", userId);
 
   if (error) {
     throw new ApiError(400, "Unable to update onboarding status", {
       message: error.message,
-      details: error.details
+      details: error.details,
     });
   }
 }
