@@ -6,3 +6,4 @@ import * as matchController from "../controllers/matchController.js";
 export const matchRoutes = Router();
 
 matchRoutes.get("/current", authMiddleware, asyncHandler(matchController.getCurrentMatch));
+matchRoutes.post("/:id/feedback", authMiddleware, asyncHandler(matchController.submitFeedback));

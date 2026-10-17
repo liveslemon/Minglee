@@ -2,7 +2,8 @@ import "./helpers/env.js";
 import { describe, test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { installFetchStub, pgError } from "./helpers/fetchStub.js";
-import { getCurrentMatch } from "../src/services/matchService.js";
+import { getCurrentMatch, submitMatchFeedback } from "../src/services/matchService.js";
+import { matchFeedbackSchema } from "../src/validators/matchSchemas.js";
 import { ApiError } from "../src/utils/apiError.js";
 
 const ME = "user-me";
@@ -175,5 +176,42 @@ describe("getCurrentMatch", () => {
     stubPartnerData();
     stub.on({ table: "user_photos", method: "GET" }, pgError("boom"));
     await assert.rejects(getCurrentMatch(ME), (err) => err instanceof ApiError);
+  });
+});
+
+describe("submitMatchFeedback", () => {
+  const MATCH_ID = "11111111-1111-4111-8111-111111111111";
+
+  test("saves the rating for a participant (upsert on match_id,user_id)", async () => {
+    stub.on({ table: "matches", method: "GET" }, [{ id: MATCH_ID, user1_id: ME, user2_id: PARTNER }]);
+    stub.on({ table: "match_feedback", method: "POST" }, (req) => [{ ...req.body, match_id: MATCH_ID }]);
+
+    const result = await submitMatchFeedback(PARTNER, MATCH_ID, "loved");
+
+    assert.equal(result.rating, "loved");
+    const [write] = stub.callsTo({ table: "match_feedback", method: "POST" });
+    assert.equal(write.url.searchParams.get("on_conflict"), "match_id,user_id");
+    assert.equal(write.body.user_id, PARTNER);
+    assert.match(write.headers.get("prefer") ?? "", /resolution=merge-duplicates/);
+  });
+
+  test("404 for a match the user wasn't in, without writing", async () => {
+    stub.on({ table: "matches", method: "GET" }, [{ id: MATCH_ID, user1_id: "someone", user2_id: "else" }]);
+    await assert.rejects(submitMatchFeedback(ME, MATCH_ID, "nice"), { statusCode: 404 });
+    assert.equal(stub.callsTo({ table: "match_feedback" }).length, 0);
+  });
+
+  test("404 for a match that doesn't exist", async () => {
+    stub.on({ table: "matches", method: "GET" }, []);
+    await assert.rejects(submitMatchFeedback(ME, MATCH_ID, "nice"), { statusCode: 404 });
+  });
+
+  test("only the four ratings the page sends are accepted", () => {
+    for (const rating of ["loved", "nice", "neutral", "uncomfortable"]) {
+      assert.equal(matchFeedbackSchema.safeParse({ rating }).success, true, rating);
+    }
+    for (const body of [{ rating: "great" }, {}, { rating: "loved", extra: 1 }]) {
+      assert.equal(matchFeedbackSchema.safeParse(body).success, false, JSON.stringify(body));
+    }
   });
 });

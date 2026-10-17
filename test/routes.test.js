@@ -85,6 +85,7 @@ describe("JWT-protected routes reject anonymous requests", () => {
     ["POST", "/ads", { title: "x" }],
     ["POST", "/ads/upload"],
     ["GET", "/matches/current"],
+    ["POST", "/matches/11111111-1111-4111-8111-111111111111/feedback"],
     ["GET", "/notifications"],
     ["GET", "/notifications/popups"],
     ["POST", "/notifications/subscribe", {}],

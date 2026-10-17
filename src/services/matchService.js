@@ -76,3 +76,28 @@ export async function getCurrentMatch(userId) {
     },
   };
 }
+
+// Save (or overwrite) the caller's rating of a match they were part of.
+export async function submitMatchFeedback(userId, matchId, rating) {
+  const { data: match, error } = await supabase
+    .from("matches")
+    .select("id,user1_id,user2_id")
+    .eq("id", matchId)
+    .maybeSingle();
+  if (error) throw dbError(error);
+  // Same response for "doesn't exist" and "not yours", so ids can't be probed.
+  if (!match || (match.user1_id !== userId && match.user2_id !== userId)) {
+    throw new ApiError(404, "Match not found");
+  }
+
+  const { data, error: saveErr } = await supabase
+    .from("match_feedback")
+    .upsert(
+      { match_id: matchId, user_id: userId, rating, updated_at: new Date().toISOString() },
+      { onConflict: "match_id,user_id" },
+    )
+    .select("match_id,rating,updated_at")
+    .single();
+  if (saveErr) throw dbError(saveErr);
+  return data;
+}
