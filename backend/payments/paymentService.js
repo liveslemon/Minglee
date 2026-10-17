@@ -1,21 +1,60 @@
 import crypto from "crypto";
 import { supabase } from "../../src/supabase.js";
+import { ApiError } from "../../src/utils/apiError.js";
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "sk_test_mock_paystack_secret_key";
-const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY || "FLWSECK_TEST_mock_flutterwave_secret_key";
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
+
+// Mock mode lets local dev run the full flow without a gateway. It can never be
+// enabled in production, and it must be opted into explicitly.
+const MOCK_MODE =
+  process.env.PAYMENTS_MOCK_MODE === "true" && process.env.NODE_ENV !== "production";
+
+function requireGatewayKey(gateway) {
+  const key = gateway === "flutterwave" ? FLUTTERWAVE_SECRET_KEY : PAYSTACK_SECRET_KEY;
+  if (!key) throw new ApiError(503, `Payments via ${gateway} are not configured on this server`);
+  return key;
+}
+
+function generateReference() {
+  return `MGL-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+}
+
+function generateTicketCode() {
+  return `TKT-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
+}
 
 export const paymentService = {
-  // Initialize Payment with Paystack or Flutterwave
-  async initializePayment(payload) {
-    const { user_id, event_id, email, amount, currency = "NGN", gateway = "paystack", callback_url } = payload;
-    const reference = `MGL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  // Initialize Payment with Paystack or Flutterwave.
+  // The amount is always taken from the event record, never from the client.
+  async initializePayment({ userId, event_id, email, gateway = "paystack", callback_url }) {
+    const { data: event, error: eventErr } = await supabase
+      .from("events")
+      .select("id,ticket_price,status")
+      .eq("id", event_id)
+      .maybeSingle();
+
+    if (eventErr) throw eventErr;
+    if (!event) throw new ApiError(404, "Event not found");
+    if (event.status && event.status !== "approved") {
+      throw new ApiError(400, "Tickets are not on sale for this event");
+    }
+
+    const amount = Number(event.ticket_price ?? 0);
+    if (!(amount > 0)) {
+      throw new ApiError(400, "This event is free; register via /events/register instead");
+    }
+
+    const currency = "NGN";
+    const secretKey = MOCK_MODE ? null : requireGatewayKey(gateway);
+    const reference = generateReference();
 
     // 1. Create pending payment record in Supabase
     const { data: paymentRecord, error: dbErr } = await supabase
       .from("payments")
       .insert([{
         reference,
-        user_id,
+        user_id: userId,
         payment_type: "event_ticket",
         event_id,
         amount,
@@ -28,94 +67,122 @@ export const paymentService = {
 
     if (dbErr) throw dbErr;
 
-    // 2. Call gateway API based on selected gateway
-    if (gateway === "flutterwave") {
-      try {
-        const response = await fetch("https://api.flutterwave.com/v3/payments", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            tx_ref: reference,
-            amount,
-            currency,
-            redirect_url: callback_url,
-            customer: { email },
-            meta: { user_id, event_id },
-            customizations: { title: "Minglee Event Ticket" }
-          })
-        });
-
-        const resData = await response.json();
-        if (resData && resData.status === "success") {
-          return {
-            payment: paymentRecord,
-            authorization_url: resData.data.link,
-            reference
-          };
-        }
-      } catch (err) {}
-
+    if (MOCK_MODE) {
       return {
         payment: paymentRecord,
-        authorization_url: `https://checkout.flutterwave.com/v3/hosted/pay/mock-${reference}`,
+        authorization_url: `https://checkout.example.invalid/mock-${reference}`,
         reference,
-        note: "Mock Flutterwave checkout URL generated for dev mode"
+        note: "PAYMENTS_MOCK_MODE is on: no real gateway was called"
       };
     }
 
-    // Default: Paystack API
-    try {
-      const response = await fetch("https://api.paystack.co/transaction/initialize", {
+    // 2. Call gateway API based on selected gateway
+    if (gateway === "flutterwave") {
+      const response = await fetch("https://api.flutterwave.com/v3/payments", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${secretKey}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          email,
-          amount: Math.round(amount * 100), // convert to kobo
-          reference,
+          tx_ref: reference,
+          amount,
           currency,
-          callback_url,
-          metadata: { user_id, event_id }
+          redirect_url: callback_url,
+          customer: { email },
+          meta: { user_id: userId, event_id },
+          customizations: { title: "Minglee Event Ticket" }
         })
       });
 
-      const resData = await response.json();
-      if (resData && resData.status) {
-        return {
-          payment: paymentRecord,
-          authorization_url: resData.data.authorization_url,
-          access_code: resData.data.access_code,
-          reference
-        };
+      const resData = await response.json().catch(() => null);
+      if (resData?.status === "success") {
+        return { payment: paymentRecord, authorization_url: resData.data.link, reference };
       }
-    } catch (err) {}
+      throw new ApiError(502, "Unable to start payment with Flutterwave");
+    }
 
-    return {
-      payment: paymentRecord,
-      authorization_url: `https://checkout.paystack.com/mock-${reference}`,
-      access_code: `mock_code_${reference}`,
-      reference,
-      note: "Mock Paystack checkout URL generated for dev mode"
-    };
+    // Default: Paystack API
+    const response = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email,
+        amount: Math.round(amount * 100), // convert to kobo
+        reference,
+        currency,
+        callback_url,
+        metadata: { user_id: userId, event_id }
+      })
+    });
+
+    const resData = await response.json().catch(() => null);
+    if (resData?.status) {
+      return {
+        payment: paymentRecord,
+        authorization_url: resData.data.authorization_url,
+        access_code: resData.data.access_code,
+        reference
+      };
+    }
+    throw new ApiError(502, "Unable to start payment with Paystack");
   },
 
-  // Verify payment status with gateway and issue ticket
-  async verifyPayment(reference) {
-    // Check payment record
+  // Ask the gateway whether the payment really succeeded for the expected amount.
+  async _confirmWithGateway(payment) {
+    if (MOCK_MODE) {
+      return { status: "success", gateway_response: "Mock verification (PAYMENTS_MOCK_MODE)" };
+    }
+
+    const secretKey = requireGatewayKey(payment.gateway);
+    const reference = payment.reference;
+
+    if (payment.gateway === "flutterwave") {
+      const res = await fetch(
+        `https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`,
+        { headers: { Authorization: `Bearer ${secretKey}` } }
+      );
+      const resData = await res.json().catch(() => null);
+      const data = resData?.data;
+      const ok =
+        resData?.status === "success" &&
+        data?.status === "successful" &&
+        data?.tx_ref === reference &&
+        data?.currency === payment.currency &&
+        Number(data?.amount) >= Number(payment.amount);
+      return ok ? data : null;
+    }
+
+    const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      headers: { Authorization: `Bearer ${secretKey}` }
+    });
+    const resData = await res.json().catch(() => null);
+    const data = resData?.data;
+    const ok =
+      resData?.status === true &&
+      data?.status === "success" &&
+      data?.reference === reference &&
+      data?.currency === payment.currency &&
+      Number(data?.amount) >= Math.round(Number(payment.amount) * 100);
+    return ok ? data : null;
+  },
+
+  // Verify payment status with gateway and issue ticket.
+  // When userId is given, the payment must belong to that user (webhooks pass none).
+  async verifyPayment(reference, { userId } = {}) {
     const { data: payment, error } = await supabase
       .from("payments")
       .select("*")
       .eq("reference", reference)
-      .single();
+      .maybeSingle();
 
-    if (error || !payment) throw new Error("Payment record not found");
+    if (error || !payment) throw new ApiError(404, "Payment record not found");
+    if (userId && payment.user_id !== userId) throw new ApiError(404, "Payment record not found");
     if (payment.payment_type !== "event_ticket") {
-      throw new Error("Payment is not for an event ticket");
+      throw new ApiError(400, "Payment is not for an event ticket");
     }
 
     if (payment.status === "success") {
@@ -123,64 +190,26 @@ export const paymentService = {
         .from("tickets")
         .select("*")
         .eq("payment_id", payment.id)
-        .single();
+        .maybeSingle();
       return { payment, ticket, message: "Payment already verified" };
     }
 
-    let isSuccess = false;
-    let gatewayData = {};
-
-    // Verify against Flutterwave or Paystack depending on gateway field
-    if (payment.gateway === "flutterwave") {
-      try {
-        const res = await fetch(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`, {
-          headers: { Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}` }
-        });
-        const resData = await res.json();
-        if (resData && resData.status === "success" && resData.data.status === "successful") {
-          isSuccess = true;
-          gatewayData = resData.data;
-        } else if (reference.startsWith("MGL-")) {
-          isSuccess = true;
-          gatewayData = { status: "success", gateway_response: "Successful mock Flutterwave verification" };
-        }
-      } catch (err) {
-        if (reference.startsWith("MGL-")) {
-          isSuccess = true;
-          gatewayData = { status: "success", gateway_response: "Fallback test verification" };
-        }
-      }
-    } else {
-      // Paystack verification
-      try {
-        const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-          headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` }
-        });
-        const resData = await res.json();
-
-        if (resData && resData.status && resData.data.status === "success") {
-          isSuccess = true;
-          gatewayData = resData.data;
-        } else if (reference.startsWith("MGL-")) {
-          isSuccess = true;
-          gatewayData = { status: "success", gateway_response: "Successful mock verification" };
-        }
-      } catch (err) {
-        if (reference.startsWith("MGL-")) {
-          isSuccess = true;
-          gatewayData = { status: "success", gateway_response: "Fallback test verification" };
-        }
-      }
+    let gatewayData = null;
+    try {
+      gatewayData = await this._confirmWithGateway(payment);
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      // Network trouble: leave the payment pending so it can be re-verified later.
+      throw new ApiError(502, "Could not reach payment gateway; please retry verification");
     }
 
-    if (!isSuccess) {
+    if (!gatewayData) {
       await supabase
         .from("payments")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", payment.id);
-      throw new Error("Payment verification failed at gateway");
+      throw new ApiError(402, "Payment verification failed at gateway");
     }
-
 
     // Update payment record to success
     const { data: updatedPayment, error: updateErr } = await supabase
@@ -204,20 +233,22 @@ export const paymentService = {
 
   // Verify Webhook Signature (Paystack HMAC SHA512)
   verifyWebhookSignature(rawBody, signatureHeader) {
-    if (!signatureHeader) return false;
-    const hash = crypto
+    if (!signatureHeader || !PAYSTACK_SECRET_KEY || !rawBody) return false;
+    const expected = crypto
       .createHmac("sha512", PAYSTACK_SECRET_KEY)
       .update(rawBody)
       .digest("hex");
-    return hash === signatureHeader;
+    const a = Buffer.from(expected);
+    const b = Buffer.from(String(signatureHeader));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
   },
 
   // Handle Paystack Webhook Event
   async handleWebhook(eventPayload) {
-    const { event, data } = eventPayload;
-    if (event === "charge.success") {
-      const reference = data.reference;
-      return await this.verifyPayment(reference);
+    const { event, data } = eventPayload || {};
+    if (event === "charge.success" && data?.reference) {
+      // Re-confirms with the gateway rather than trusting the webhook body.
+      return await this.verifyPayment(data.reference);
     }
     return { received: true, event };
   },
@@ -233,14 +264,13 @@ export const paymentService = {
 
     if (existingTicket) return existingTicket;
 
-    const ticketCode = `TKT-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
     const { data: ticket, error } = await supabase
       .from("tickets")
       .insert([{
         payment_id: payment.id,
         user_id: payment.user_id,
         event_id: payment.event_id,
-        ticket_code: ticketCode,
+        ticket_code: generateTicketCode(),
         status: "valid"
       }])
       .select()
