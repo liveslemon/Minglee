@@ -8,6 +8,8 @@ import {
 import * as profileService from "../services/profileService.js";
 import { ApiError } from "../utils/apiError.js";
 import { supabase } from "../supabase.js";
+import { config } from "../config.js";
+import { signPhotoPaths } from "../services/photoUrls.js";
 import path from "path";
 import { z } from "zod";
 
@@ -225,7 +227,9 @@ const completeOnboardingSchema = z.object({
   photos: z
     .array(
       z.object({
-        image_url: z.string().url(),
+        // Object path or a URL from /photos/upload; replacePhotos validates
+        // that it is in the user's own folder.
+        image_url: z.string().min(1),
         photo_type: z.enum(["Profile", "Gallery"]),
         upload_order: z.number().int().min(1).max(2),
       }),
@@ -437,7 +441,7 @@ export async function uploadPhoto(req, res) {
     );
   }
 
-  const bucketName = process.env.SUPABASE_USER_PHOTOS_BUCKET || "user-photos";
+  const bucketName = config.userPhotosBucket;
   const ext = path.extname(req.file.originalname) || ".jpg";
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(7);
@@ -454,12 +458,11 @@ export async function uploadPhoto(req, res) {
     throw new ApiError(500, `Supabase Storage Error: ${error.message}`);
   }
 
-  const { data: publicUrlData } = supabase.storage
-    .from(bucketName)
-    .getPublicUrl(filePath);
+  // The bucket is private: hand back a short-lived signed URL for preview.
+  const signed = await signPhotoPaths([filePath]);
 
   return res.status(201).json({
-    image_url: publicUrlData.publicUrl,
+    image_url: signed.get(filePath),
     path: filePath,
   });
 }

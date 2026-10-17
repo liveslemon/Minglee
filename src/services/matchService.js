@@ -1,5 +1,6 @@
 import { supabase } from "../supabase.js";
 import { ApiError } from "../utils/apiError.js";
+import { withSignedPhotoUrls } from "./photoUrls.js";
 
 // Statuses that hide a match from both users.
 const HIDDEN_STATUSES = ["expired", "cancelled"];
@@ -45,6 +46,8 @@ export async function getCurrentMatch(userId) {
   if (anyErr) throw dbError(anyErr);
   if (!partner) return null;
 
+  const signedPhotos = await withSignedPhotoUrls(photos, partnerId);
+
   return {
     match_id: match.id,
     match_score: match.match_score,
@@ -68,7 +71,7 @@ export async function getCurrentMatch(userId) {
             instagram: profile.instagram,
           }
         : {},
-      photos: photos ?? [],
+      photos: signedPhotos,
       focuses: (focuses ?? []).map((f) => f.focus_option),
     },
   };

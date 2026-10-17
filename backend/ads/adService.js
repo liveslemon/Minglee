@@ -2,6 +2,7 @@ import { supabase } from "../../src/supabase.js";
 import crypto from "crypto";
 import path from "node:path";
 import { ApiError } from "../../src/utils/apiError.js";
+import { config } from "../../src/config.js";
 
 const inMemoryAds = new Map();
 
@@ -31,10 +32,14 @@ export const adService = {
       throw new ApiError(400, "Choose a valid image file to upload");
     }
 
-    const bucketName =
-      process.env.SUPABASE_ADS_BUCKET ||
-      process.env.SUPABASE_USER_PHOTOS_BUCKET ||
-      "user-photos";
+    // Ad images are shown to everyone, so they live in their own public
+    // bucket; the user photos bucket is private.
+    const bucketName = config.adsBucket;
+    if (bucketName === config.userPhotosBucket) {
+      throw new Error(
+        "SUPABASE_ADS_BUCKET must be a public bucket separate from SUPABASE_USER_PHOTOS_BUCKET",
+      );
+    }
     const extension = path.extname(file.originalname || "").toLowerCase();
     const safeExtension = /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : "";
     const filePath = `ads/${userId}/${crypto.randomUUID()}${safeExtension}`;
