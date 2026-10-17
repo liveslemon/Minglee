@@ -274,7 +274,10 @@ export const adminPlatformController = {
   },
 
   async runMatching(req, res) {
-    await runMatchingCycle();
-    res.json({ success: true, message: "Matching cycle executed successfully" });
+    const result = await runMatchingCycle();
+    const message = result.status === "already_ran"
+      ? `Matches for week ${result.week} already exist; nothing changed`
+      : `Saved ${result.inserted} matches for week ${result.week}`;
+    res.json({ success: true, message, data: result });
   },
 };

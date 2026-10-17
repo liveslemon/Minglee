@@ -226,63 +226,44 @@ export function galeShapley(males, females, pastPairs) {
   return finalMatches;
 }
 
-export async function expireOldMatches() {
-  const { error } = await supabase
-    .from("matches")
-    .update({ status: "expired" })
-    .eq("status", "pending");
-    
-  if (error) {
-    console.error("Error expiring old matches:", error);
-  }
-}
-
-function getMatchWeekDate(d) {
+export function getMatchWeekDate(d) {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
   const monday = new Date(d.setDate(diff));
   return monday.toISOString().split('T')[0];
 }
 
-export async function saveMatches(matches) {
-  if (matches.length === 0) return;
-
-  const currentWeek = getMatchWeekDate(new Date());
-  const payload = matches.map(m => ({
-    user1_id: m.user1_id,
-    user2_id: m.user2_id,
-    match_score: m.match_score,
-    match_week: currentWeek,
-    status: "pending"
-  }));
-
-  const { error } = await supabase
-    .from("matches")
-    .insert(payload);
+// Expires last week's pending matches and inserts this week's in one
+// transaction (see migrations/002_weekly_matches.sql). No-op if this week
+// already has matches, so repeated triggers are safe.
+export async function saveWeeklyMatches(matches, week = getMatchWeekDate(new Date())) {
+  const { data, error } = await supabase.rpc("replace_weekly_matches", {
+    p_week: week,
+    p_matches: matches.map(m => ({
+      user1_id: m.user1_id,
+      user2_id: m.user2_id,
+      match_score: m.match_score,
+    })),
+  });
 
   if (error) {
-    console.error("Error saving new matches:", error);
     throw new ApiError(500, "Unable to save matches", { details: error });
   }
+  return { week, ...data };
 }
 
+// Throws on failure so callers (admin endpoint, scheduler) can report it.
 export async function runMatchingCycle() {
   console.log("[Matching Cycle] Starting...");
-  try {
-    const { males, females } = await fetchEligibleUsers();
-    console.log(`[Matching Cycle] Found ${males.length} males and ${females.length} females.`);
+  const { males, females } = await fetchEligibleUsers();
+  console.log(`[Matching Cycle] Found ${males.length} males and ${females.length} females.`);
 
-    const pastPairs = await getPastMatches();
-    
-    const newMatches = galeShapley(males, females, pastPairs);
-    console.log(`[Matching Cycle] Generated ${newMatches.length} matches.`);
+  const pastPairs = await getPastMatches();
 
-    // Expire old matches before saving new ones
-    await expireOldMatches();
+  const newMatches = galeShapley(males, females, pastPairs);
+  console.log(`[Matching Cycle] Generated ${newMatches.length} matches.`);
 
-    await saveMatches(newMatches);
-    console.log("[Matching Cycle] Completed successfully.");
-  } catch (error) {
-    console.error("[Matching Cycle] Failed:", error);
-  }
+  const result = await saveWeeklyMatches(newMatches);
+  console.log(`[Matching Cycle] ${result.status} for week ${result.week}: ${result.inserted} matches saved.`);
+  return { eligible: { males: males.length, females: females.length }, generated: newMatches.length, ...result };
 }
