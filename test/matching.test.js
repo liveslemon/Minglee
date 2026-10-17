@@ -303,17 +303,11 @@ describe("getMatchWeekDate", () => {
     }
   });
 
-  // BUG (not fixed here; tests only): getMatchWeekDate computes the Monday in
-  // the server's local time zone but formats it with toISOString() (UTC). On a
-  // server east of UTC (e.g. TZ=Africa/Lagos, UTC+1), any time between local
-  // midnight and 01:00 yields the previous *Sunday*. The scheduler fires at
-  // exactly 00:00 Africa/Lagos on Friday, so on such a server p_week would be a
-  // Sunday, while an admin-triggered run later the same week would send Monday;
-  // replace_weekly_matches compares match_week = p_week, so it would not detect
-  // that the week already ran and would create a second set of matches.
+  // Regression: the week used to be computed in server-local time but formatted
+  // in UTC, so the Friday 00:00 WAT cron run produced the previous Sunday and a
+  // later admin run (Monday) wasn't recognised as the same week.
   test(
     "Friday 00:00 Africa/Lagos (cron time) maps to Monday, not Sunday",
-    { todo: "BUG: getMatchWeekDate mixes local-time arithmetic with UTC formatting" },
     () => {
       const restore = setEnv({ TZ: "Africa/Lagos" });
       try {

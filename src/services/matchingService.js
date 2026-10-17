@@ -226,11 +226,13 @@ export function galeShapley(males, females, pastPairs) {
   return finalMatches;
 }
 
+// Monday (YYYY-MM-DD) of the week containing `d`, in WAT regardless of the
+// server's time zone. Africa/Lagos is a fixed UTC+1 with no DST.
 export function getMatchWeekDate(d) {
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-  const monday = new Date(d.setDate(diff));
-  return monday.toISOString().split('T')[0];
+  const wat = new Date(d.getTime() + 60 * 60 * 1000);
+  const day = wat.getUTCDay();
+  wat.setUTCDate(wat.getUTCDate() - (day === 0 ? 6 : day - 1));
+  return wat.toISOString().slice(0, 10);
 }
 
 // Expires last week's pending matches and inserts this week's in one

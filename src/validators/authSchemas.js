@@ -24,9 +24,11 @@ export const signupSchema = z
   })
   .strict();
 
+// Login accepts any stored-looking value: numbers saved before normalization
+// that can't be normalized must still be able to log in (exact match).
 export const loginSchema = z
   .object({
-    whatsapp_number: whatsappNumber,
+    whatsapp_number: z.string().trim().min(5).max(25),
     password: z.string().min(1).max(200),
   })
   .strict();

@@ -36,10 +36,14 @@ const partnerProfile = {
   created_at: "2026-01-01",
 };
 
+// Stored as storage paths in the private bucket; returned as signed URLs.
 const photos = [
-  { image_url: "https://img/1.jpg", photo_type: "main", upload_order: 0 },
-  { image_url: "https://img/2.jpg", photo_type: "extra", upload_order: 1 },
+  { image_url: `${PARTNER}/1.jpg`, photo_type: "main", upload_order: 0 },
+  { image_url: `${PARTNER}/2.jpg`, photo_type: "extra", upload_order: 1 },
 ];
+const signedUrl = (path) =>
+  `${process.env.SUPABASE_URL}/storage/v1/object/sign/user-photos/${path}?token=t`;
+const signedPhotos = photos.map((p) => ({ ...p, image_url: signedUrl(p.image_url) }));
 
 let stub;
 beforeEach(() => {
@@ -55,6 +59,13 @@ function stubPartnerData({ match = matchRow, user = partnerUser, profile = partn
   stub.on({ table: "user_profiles", method: "GET" }, profile ? [profile] : []);
   stub.on({ table: "user_photos", method: "GET" }, photos);
   stub.on({ table: "user_focuses", method: "GET" }, [{ focus_option: "career" }, { focus_option: "faith" }]);
+  stub.on({ pathIncludes: "/storage/v1/object/sign/" }, (req) =>
+    req.body.paths.map((path) => ({
+      path,
+      error: null,
+      signedURL: `/object/sign/user-photos/${path}?token=t`,
+    }))
+  );
 }
 
 describe("getCurrentMatch", () => {
@@ -84,7 +95,7 @@ describe("getCurrentMatch", () => {
           relationship_goal: "long_term",
           instagram: "@ada",
         },
-        photos,
+        photos: signedPhotos,
         focuses: ["career", "faith"],
       },
     });

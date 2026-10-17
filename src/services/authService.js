@@ -12,7 +12,7 @@ async function findUsersByPhone(rawNumber, columns) {
   const { data, error } = await supabase
     .from("users")
     .select(columns)
-    .in("whatsapp_number", phoneLookupForms(rawNumber));
+    .in("whatsapp_number", normalizePhone(rawNumber) ? phoneLookupForms(rawNumber) : [rawNumber.trim()]);
 
   if (error) throw new ApiError(400, "Database error", { message: error.message, details: error.details });
   return data;
@@ -66,8 +66,9 @@ export async function login({ whatsapp_number, password }) {
   // Upgrade a legacy-format row to the normalized number. Only safe when no
   // other row already holds the normalized form; the lookup above included it,
   // so a legacy match here means none did.
+  // (Skipped for legacy numbers that can't be normalized.)
   const normalizedTaken = rows.some((row) => row.whatsapp_number === normalized);
-  if (user.whatsapp_number !== normalized && !normalizedTaken) {
+  if (normalized && user.whatsapp_number !== normalized && !normalizedTaken) {
     const { data: updated, error } = await supabase
       .from("users")
       .update({ whatsapp_number: normalized })
