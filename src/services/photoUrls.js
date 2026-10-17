@@ -73,7 +73,11 @@ export function photoPathFromClient(value, userId) {
   return objectPath;
 }
 
-/** Map of object path -> signed URL, created in one batch request. */
+/**
+ * Map of object path -> signed URL, created in one batch request. Paths that
+ * Storage can't sign (e.g. the file was deleted) are logged and left out, so one
+ * broken photo doesn't take down a whole profile or match reveal.
+ */
 export async function signPhotoPaths(paths) {
   const unique = [...new Set(paths)];
   if (unique.length === 0) return new Map();
@@ -86,34 +90,34 @@ export async function signPhotoPaths(paths) {
   const signed = new Map();
   for (const item of data ?? []) {
     if (item.error || !item.signedUrl) {
-      throw new ApiError(502, "Failed to sign photo URL", { path: item.path, storage: item.error });
+      console.error(`Could not sign photo "${item.path}":`, item.error);
+      continue;
     }
     signed.set(item.path, item.signedUrl);
-  }
-  for (const p of unique) {
-    if (!signed.has(p)) throw new ApiError(502, "Failed to sign photo URL", { path: p });
   }
   return signed;
 }
 
 /**
  * Replace each row's stored `image_url` (path or legacy public URL) with a
- * signed URL. Every row must belong to `ownerId`.
+ * signed URL. Rows that don't point into `ownerId`'s folder, or can't be
+ * signed, are logged and omitted.
  */
 export async function withSignedPhotoUrls(rows, ownerId) {
-  const list = rows ?? [];
-  const paths = list.map((row) => {
+  const entries = [];
+  for (const row of rows ?? []) {
     const objectPath = extractPhotoPath(row.image_url, ownerId);
-    if (!objectPath) {
-      // Plain Error: the error handler logs it and returns a generic 500
-      // without echoing the stored value to the client.
-      throw new Error(
+    if (objectPath) {
+      entries.push({ row, objectPath });
+    } else {
+      console.error(
         `Stored photo reference for user ${ownerId} is not a file in their folder of bucket "${config.userPhotosBucket}": ${row.image_url}`,
       );
     }
-    return objectPath;
-  });
+  }
 
-  const signed = await signPhotoPaths(paths);
-  return list.map((row, i) => ({ ...row, image_url: signed.get(paths[i]) }));
+  const signed = await signPhotoPaths(entries.map((e) => e.objectPath));
+  return entries
+    .filter((e) => signed.has(e.objectPath))
+    .map((e) => ({ ...e.row, image_url: signed.get(e.objectPath) }));
 }

@@ -2,6 +2,7 @@ import { supabase } from "../supabase.js";
 import { ApiError } from "../utils/apiError.js";
 import { runMatchingCycle } from "../services/matchingService.js";
 import { getOpenReportSummary } from "../services/safetyService.js";
+import { withSignedPhotoUrls } from "../services/photoUrls.js";
 import { adService } from "../../backend/ads/adService.js";
 
 function getWeekDates() {
@@ -278,7 +279,15 @@ export const adminPlatformController = {
       open_report_reasons: reportSummary.get(u.id)?.reasons ?? [],
     });
 
-    res.json({ success: true, data: [...flaggedUsers, ...reportedUsers].map(withReports) });
+    // Photos live in a private bucket; sign them so admins can review them.
+    const data = await Promise.all(
+      [...flaggedUsers, ...reportedUsers].map(async (u) => ({
+        ...withReports(u),
+        user_photos: await withSignedPhotoUrls(u.user_photos, u.id),
+      })),
+    );
+
+    res.json({ success: true, data });
   },
 
   async updateUserFlag(req, res) {
