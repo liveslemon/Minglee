@@ -1,0 +1,69 @@
+-- Phone number normalization: review queries only. This file changes nothing.
+--
+-- New signups store whatsapp_number in E.164 ("+2348031234567"). Older rows
+-- keep whatever the user typed ("08031234567", "234 803 123 4567", ...). The
+-- backend finds those rows by trying the common legacy spellings at login and
+-- rewrites a row to the normalized form after its owner logs in successfully,
+-- unless another row already holds that number.
+--
+-- Data is deliberately NOT rewritten here: two accounts can normalize to the
+-- same number, and choosing which one to keep needs a human decision.
+-- Uncomment and run the queries below in the Supabase SQL editor to review.
+--
+-- The CASE expression mirrors normalizePhone() in src/utils/phone.js.
+--
+-- 1) Accounts that normalize to the same number (likely duplicates):
+--
+-- WITH cleaned AS (
+--   SELECT id, name, whatsapp_number, created_at,
+--          regexp_replace(regexp_replace(whatsapp_number, '[[:space:]().-]', '', 'g'), '^00', '+') AS c
+--   FROM public.users
+--   WHERE whatsapp_number IS NOT NULL
+-- ), normalized AS (
+--   SELECT *,
+--     CASE
+--       WHEN c ~ '^\+?2340?[789][01][0-9]{8}$' THEN '+234' || right(c, 10)
+--       WHEN c ~ '^0?[789][01][0-9]{8}$'       THEN '+234' || right(c, 10)
+--       WHEN c ~ '^\+?234'                     THEN NULL
+--       WHEN c ~ '^\+[1-9][0-9]{6,14}$'        THEN c
+--       ELSE NULL
+--     END AS normalized_number
+--   FROM cleaned
+-- )
+-- SELECT normalized_number,
+--        count(*) AS accounts,
+--        array_agg(id ORDER BY created_at) AS user_ids,
+--        array_agg(whatsapp_number ORDER BY created_at) AS stored_numbers,
+--        array_agg(name ORDER BY created_at) AS names
+-- FROM normalized
+-- WHERE normalized_number IS NOT NULL
+-- GROUP BY normalized_number
+-- HAVING count(*) > 1
+-- ORDER BY accounts DESC, normalized_number;
+--
+-- 2) Accounts whose stored number cannot be normalized at all. Their owners
+--    can no longer log in (login now rejects such numbers) until the number
+--    is corrected by hand:
+--
+-- WITH cleaned AS (
+--   SELECT id, name, whatsapp_number, created_at,
+--          regexp_replace(regexp_replace(whatsapp_number, '[[:space:]().-]', '', 'g'), '^00', '+') AS c
+--   FROM public.users
+--   WHERE whatsapp_number IS NOT NULL
+-- )
+-- SELECT id, name, whatsapp_number, created_at
+-- FROM cleaned
+-- WHERE NOT (
+--   c ~ '^\+?2340?[789][01][0-9]{8}$'
+--   OR c ~ '^0?[789][01][0-9]{8}$'
+--   OR (c !~ '^\+?234' AND c ~ '^\+[1-9][0-9]{6,14}$')
+-- )
+-- ORDER BY created_at;
+--
+-- 3) Rows stored with spaces/dashes etc. Login matches the raw input exactly,
+--    so these owners must type the number the same way until their row is
+--    normalized (after which any format works):
+--
+-- SELECT id, name, whatsapp_number
+-- FROM public.users
+-- WHERE whatsapp_number ~ '[[:space:]().-]';
