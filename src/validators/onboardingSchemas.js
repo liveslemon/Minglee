@@ -107,7 +107,9 @@ export const photosSchema = z
       .array(
         z
           .object({
-            image_url: z.string().url(),
+            // Storage path, signed URL or legacy public URL; ownership is
+            // checked in profileService.replacePhotos.
+            image_url: z.string().trim().min(1),
             photo_type: z.enum(["Profile", "Gallery"]),
             upload_order: z.number().int().min(1).max(2),
           })

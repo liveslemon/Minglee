@@ -1,5 +1,6 @@
 import { supabase } from "../supabase.js";
 import { ApiError } from "../utils/apiError.js";
+import { photoPathFromClient, withSignedPhotoUrls } from "./photoUrls.js";
 
 function hasText(value) {
   return typeof value === "string" && value.trim() !== "";
@@ -137,6 +138,16 @@ export async function replacePreferredBuilds(userId, builds) {
 }
 
 export async function replacePhotos(userId, photos) {
+  // Store object paths, not URLs. Clients echo back the signed URL from
+  // /photos/upload; only files in the user's own folder are accepted.
+  const rows = photos.map((p) => ({
+    user_id: userId,
+    image_url: photoPathFromClient(p.image_url, userId),
+    // Bypassing broken DB constraint "user_photos_photo_type_check" by sending null (which is valid and bypasses rule)
+    photo_type: null,
+    upload_order: p.upload_order,
+  }));
+
   const { error: delError } = await supabase
     .from("user_photos")
     .delete()
@@ -149,15 +160,7 @@ export async function replacePhotos(userId, photos) {
 
   const { data, error } = await supabase
     .from("user_photos")
-    .insert(
-      photos.map((p) => ({
-        user_id: userId,
-        image_url: p.image_url,
-        // Bypassing broken DB constraint "user_photos_photo_type_check" by sending null (which is valid and bypasses rule)
-        photo_type: null,
-        upload_order: p.upload_order,
-      })),
-    )
+    .insert(rows)
     .select("id,image_url,photo_type,upload_order")
     .order("upload_order", { ascending: true });
 
@@ -166,7 +169,7 @@ export async function replacePhotos(userId, photos) {
       message: error.message,
       details: error.details,
     });
-  return data ?? [];
+  return withSignedPhotoUrls(data, userId);
 }
 
 export async function refreshOnboardingCompletion(userId) {
@@ -294,7 +297,7 @@ export async function getMeProfile(userId) {
     preferences,
     focuses: focuses ?? [],
     builds: builds ?? [],
-    photos: photos ?? [],
+    photos: await withSignedPhotoUrls(photos, userId),
   };
 }
 

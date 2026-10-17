@@ -6,7 +6,7 @@ import * as eventController from "../controllers/eventController.js";
 export const eventRoutes = Router();
 
 eventRoutes.get("/", asyncHandler(eventController.listEvents));
-eventRoutes.post("/", asyncHandler(eventController.createEvent));
+eventRoutes.post("/", authMiddleware, asyncHandler(eventController.createEvent));
 eventRoutes.post(
   "/register",
   authMiddleware,

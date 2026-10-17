@@ -1,13 +1,22 @@
 import { z } from "zod";
+import { normalizePhone } from "../utils/phone.js";
+
+// Validates that the number can be normalized; the service does the actual
+// normalization because it also needs the raw input to find legacy rows.
+const whatsappNumber = z
+  .string()
+  .trim()
+  .min(5, "WhatsApp number is required")
+  .max(25)
+  .refine((value) => normalizePhone(value) !== null, {
+    message:
+      "Enter a valid WhatsApp number, e.g. 08031234567 or +2348031234567. Non-Nigerian numbers must start with + and the country code.",
+  });
 
 export const signupSchema = z
   .object({
     name: z.string().trim().min(1, "Name is required").max(80),
-    whatsapp_number: z
-      .string()
-      .trim()
-      .min(5, "WhatsApp number is required")
-      .max(25),
+    whatsapp_number: whatsappNumber,
     password: z
       .string()
       .min(8, "Password must be at least 8 characters")
@@ -15,9 +24,11 @@ export const signupSchema = z
   })
   .strict();
 
+// Login accepts any stored-looking value: numbers saved before normalization
+// that can't be normalized must still be able to log in (exact match).
 export const loginSchema = z
   .object({
-    whatsapp_number: z.string().min(5).max(25),
+    whatsapp_number: z.string().trim().min(5).max(25),
     password: z.string().min(1).max(200),
   })
   .strict();

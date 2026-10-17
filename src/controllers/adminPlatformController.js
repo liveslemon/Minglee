@@ -1,6 +1,8 @@
 import { supabase } from "../supabase.js";
 import { ApiError } from "../utils/apiError.js";
 import { runMatchingCycle } from "../services/matchingService.js";
+import { getOpenReportSummary } from "../services/safetyService.js";
+import { withSignedPhotoUrls } from "../services/photoUrls.js";
 import { adService } from "../../backend/ads/adService.js";
 
 function getWeekDates() {
@@ -202,10 +204,7 @@ export const adminPlatformController = {
   },
 
   async getFlaggedUsers(req, res) {
-    try {
-      const { data: flaggedUsers, error } = await supabase
-        .from("users")
-        .select(`
+    const userSelect = `
           id,
           name,
           whatsapp_number,
@@ -233,21 +232,62 @@ export const adminPlatformController = {
             photo_type,
             upload_order
           )
-        `)
+        `;
+
+    // Open user reports (POST /reports). Not swallowed: needs migrations/003_safety.sql.
+    const reportSummary = await getOpenReportSummary();
+
+    let flaggedUsers = [];
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select(userSelect)
         .eq("is_flagged", true);
 
       if (error) {
-        if (error.code === "PGRST204" || (error.message && error.message.includes("column"))) {
-          return res.json({ success: true, data: [] });
+        if (!(error.code === "PGRST204" || (error.message && error.message.includes("column")))) {
+          throw error;
         }
-        throw error;
+      } else {
+        flaggedUsers = data || [];
       }
-
-      res.json({ success: true, data: flaggedUsers || [] });
     } catch (err) {
       console.error("Error fetching flagged users:", err);
-      res.json({ success: true, data: [] });
     }
+
+    // Users with open reports who aren't admin-flagged yet.
+    const flaggedIds = new Set(flaggedUsers.map((u) => u.id));
+    const reportedOnlyIds = [...reportSummary.keys()].filter((id) => !flaggedIds.has(id));
+    let reportedUsers = [];
+    if (reportedOnlyIds.length > 0) {
+      const { data, error } = await supabase
+        .from("users")
+        .select(userSelect)
+        .in("id", reportedOnlyIds);
+      if (error) {
+        throw new ApiError(500, "Unable to load reported users", { details: error.message });
+      }
+      reportedUsers = (data || []).sort(
+        (a, b) => reportSummary.get(b.id).count - reportSummary.get(a.id).count,
+      );
+    }
+
+    // Added fields only; existing fields are unchanged.
+    const withReports = (u) => ({
+      ...u,
+      open_report_count: reportSummary.get(u.id)?.count ?? 0,
+      open_report_reasons: reportSummary.get(u.id)?.reasons ?? [],
+    });
+
+    // Photos live in a private bucket; sign them so admins can review them.
+    const data = await Promise.all(
+      [...flaggedUsers, ...reportedUsers].map(async (u) => ({
+        ...withReports(u),
+        user_photos: await withSignedPhotoUrls(u.user_photos, u.id),
+      })),
+    );
+
+    res.json({ success: true, data });
   },
 
   async updateUserFlag(req, res) {
@@ -274,7 +314,10 @@ export const adminPlatformController = {
   },
 
   async runMatching(req, res) {
-    await runMatchingCycle();
-    res.json({ success: true, message: "Matching cycle executed successfully" });
+    const result = await runMatchingCycle();
+    const message = result.status === "already_ran"
+      ? `Matches for week ${result.week} already exist; nothing changed`
+      : `Saved ${result.inserted} matches for week ${result.week}`;
+    res.json({ success: true, message, data: result });
   },
 };

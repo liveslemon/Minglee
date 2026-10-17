@@ -6,6 +6,9 @@ export const config = {
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   jwtSecret: process.env.JWT_SECRET,
-  userPhotosBucket: process.env.SUPABASE_USER_PHOTOS_BUCKET || "user-photos"
+  // Private bucket: user photos are only served via short-lived signed URLs.
+  userPhotosBucket: process.env.SUPABASE_USER_PHOTOS_BUCKET || "user-photos",
+  // Public bucket for ad images. Must differ from userPhotosBucket.
+  adsBucket: process.env.SUPABASE_ADS_BUCKET || "ad-images"
 };
 

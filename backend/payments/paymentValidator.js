@@ -1,11 +1,10 @@
 import { z } from "zod";
 
+// amount and user_id are intentionally absent: the price comes from the event
+// record and the user comes from the verified JWT.
 export const initializePaymentSchema = z.object({
-  user_id: z.string().uuid("Valid user_id UUID is required"),
   event_id: z.string().uuid("Valid event_id UUID is required"),
   email: z.string().email("Valid user email is required"),
-  amount: z.number().positive("Amount must be greater than 0"),
-  currency: z.string().default("NGN"),
   gateway: z.enum(["paystack", "flutterwave"]).default("paystack"),
   callback_url: z.string().url().optional()
 });
