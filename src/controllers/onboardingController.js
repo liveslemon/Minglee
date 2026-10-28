@@ -9,7 +9,7 @@ import * as profileService from "../services/profileService.js";
 import { ApiError } from "../utils/apiError.js";
 import { supabase } from "../supabase.js";
 import { config } from "../config.js";
-import { signPhotoPaths } from "../services/photoUrls.js";
+import { signPhotoPaths, extractPhotoPath } from "../services/photoUrls.js";
 import path from "path";
 import { z } from "zod";
 
@@ -326,6 +326,7 @@ export async function savePhotos(req, res) {
   const photos = await profileService.replacePhotos(userId, input.photos);
   return res.status(201).json({
     photos: photos.map((p) => ({
+      id: p.id,
       image_url: p.image_url,
       photo_type: p.photo_type,
       upload_order: p.upload_order,
@@ -386,6 +387,7 @@ export async function getMeProfile(req, res) {
     focuses: data.focuses.map((f) => f.focus_option),
     preferred_builds: data.builds.map((b) => b.preferred_build),
     photos: data.photos.map((p) => ({
+      id: p.id,
       image_url: p.image_url,
       photo_type: p.photo_type,
       upload_order: p.upload_order,
@@ -465,6 +467,52 @@ export async function uploadPhoto(req, res) {
     image_url: signed.get(filePath),
     path: filePath,
   });
+}
+
+export async function deletePhoto(req, res) {
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  const { id } = req.params;
+  if (!id) throw new ApiError(400, "Missing photo id");
+
+  const { data: photo, error: fetchErr } = await supabase
+    .from("user_photos")
+    .select("id,user_id,image_url")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (fetchErr) {
+    throw new ApiError(500, "Database error", { message: fetchErr.message });
+  }
+  if (!photo || photo.user_id !== userId) {
+    throw new ApiError(404, "Photo not found");
+  }
+
+  // Best-effort: also remove the underlying object. A photo whose file is
+  // already missing (the reason this endpoint exists) must still be
+  // deletable, so a storage error here is logged, not thrown.
+  const objectPath = extractPhotoPath(photo.image_url, userId);
+  if (objectPath) {
+    const { error: removeErr } = await supabase.storage
+      .from(config.userPhotosBucket)
+      .remove([objectPath]);
+    if (removeErr) {
+      console.error(`Could not remove storage object for photo ${id}:`, removeErr.message);
+    }
+  }
+
+  const { error: delErr } = await supabase
+    .from("user_photos")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (delErr) {
+    throw new ApiError(500, "Unable to delete photo", { message: delErr.message });
+  }
+
+  return res.status(204).end();
 }
 
 /**

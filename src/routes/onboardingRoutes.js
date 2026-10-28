@@ -56,6 +56,10 @@ onboardingRoutes.post(
   asyncHandler(onboardingController.uploadPhoto),
 );
 onboardingRoutes.post("/photos", asyncHandler(onboardingController.savePhotos));
+onboardingRoutes.delete(
+  "/photos/:id",
+  asyncHandler(onboardingController.deletePhoto),
+);
 onboardingRoutes.post(
   "/complete-onboarding",
   asyncHandler(onboardingController.completeOnboarding),

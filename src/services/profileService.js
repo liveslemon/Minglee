@@ -279,7 +279,7 @@ export async function getMeProfile(userId) {
       .eq("user_id", userId),
     supabase
       .from("user_photos")
-      .select("image_url,photo_type,upload_order")
+      .select("id,image_url,photo_type,upload_order")
       .eq("user_id", userId)
       .order("upload_order", { ascending: true }),
   ]);
