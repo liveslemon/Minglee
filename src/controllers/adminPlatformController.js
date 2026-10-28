@@ -2,6 +2,7 @@ import { supabase } from "../supabase.js";
 import { ApiError } from "../utils/apiError.js";
 import { runMatchingCycle } from "../services/matchingService.js";
 import { adService } from "../../backend/ads/adService.js";
+import { getUtcWeekStart } from "../services/weeklyActiveUsersService.js";
 
 function getWeekDates() {
   const now = new Date();
@@ -34,6 +35,44 @@ function getWeekDates() {
 }
 
 export const adminPlatformController = {
+  async getWeeklyActiveUsers(_req, res) {
+    const weekStart = getUtcWeekStart();
+    const weekStarts = Array.from({ length: 12 }, (_, index) => {
+      const start = new Date(`${weekStart}T00:00:00.000Z`);
+      start.setUTCDate(start.getUTCDate() - (11 - index) * 7);
+      return start.toISOString().slice(0, 10);
+    });
+
+    const weeks = await Promise.all(weekStarts.map(async (start) => {
+      const { count, error } = await supabase
+        .from("weekly_active_users")
+        .select("user_id", { count: "exact", head: true })
+        .eq("week_start", start);
+
+      if (error) {
+        console.error(`Error fetching weekly active users for ${start}:`, error);
+        throw new ApiError(500, "Unable to fetch weekly active users");
+      }
+
+      const end = new Date(`${start}T00:00:00.000Z`);
+      end.setUTCDate(end.getUTCDate() + 6);
+      return {
+        weekStart: start,
+        weekEnd: end.toISOString().slice(0, 10),
+        weeklyActiveUsers: count ?? 0,
+      };
+    }));
+    const currentWeek = weeks[weeks.length - 1];
+
+    res.json({
+      success: true,
+      weekStart,
+      weekEnd: currentWeek.weekEnd,
+      weeklyActiveUsers: currentWeek.weeklyActiveUsers,
+      weeks,
+    });
+  },
+
   async getDashboardStats(req, res) {
     try {
       // 1. Users metrics

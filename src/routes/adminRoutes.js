@@ -11,6 +11,7 @@ adminRoutes.use(adminAuthMiddleware);
 // Admin Telemetry & Statistics (dates of the week, active users, popups, categories)
 adminRoutes.get("/stats", asyncHandler(adminPlatformController.getDashboardStats));
 adminRoutes.get("/dashboard", asyncHandler(adminPlatformController.getDashboardStats));
+adminRoutes.get("/stats/weekly-active-users", asyncHandler(adminPlatformController.getWeeklyActiveUsers));
 
 // Ad Approval & Review Platform
 adminRoutes.get("/ads/pending", asyncHandler(adminPlatformController.getPendingAds));
