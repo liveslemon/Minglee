@@ -14,6 +14,7 @@ function mapEvent(event) {
     event_day: event.event_day,
     ticket_price: Number(event.ticket_price ?? 0),
     created_at: event.created_at ?? null,
+    is_boosted: Boolean(event.is_boosted),
     attendee_count: Number(event.attendee_count ?? 0),
     paid_attendees_count: Number(event.paid_attendees_count ?? 0),
     total_revenue: Number(event.total_revenue ?? 0),
@@ -126,16 +127,52 @@ export async function listEvents() {
     revenueTotals.set(payment.event_id, sum + Number(payment.amount || 0));
   }
 
-  return safeEvents.map((event) => {
+  // Events with a live, approved ticket_boost ad are pinned to the top of
+  // the listing as sponsored/promoted placements.
+  const boostedEventIds = await getBoostedEventIds();
+
+  const mapped = safeEvents.map((event) => {
     const totalRev = revenueTotals.get(event.id) ?? 0;
     return mapEvent({
       ...event,
+      is_boosted: boostedEventIds.has(event.id),
       attendee_count: attendeeCounts.get(event.id) ?? 0,
       paid_attendees_count: paidCounts.get(event.id) ?? 0,
       total_revenue: totalRev,
       host_payout_amount: totalRev, // Total payout owed to event hosters
     });
   });
+
+  // Boosted events first (most recently boosted first), then the rest in
+  // their normal chronological order.
+  return mapped.sort((a, b) => {
+    if (a.is_boosted !== b.is_boosted) return a.is_boosted ? -1 : 1;
+    return new Date(a.event_day).getTime() - new Date(b.event_day).getTime();
+  });
+}
+
+async function getBoostedEventIds() {
+  const now = new Date().toISOString();
+  try {
+    const { data: boosts, error } = await supabase
+      .from("ads")
+      .select("event_id")
+      .eq("ad_type", "ticket_boost")
+      .eq("status", "approved")
+      .eq("is_active", true)
+      .not("event_id", "is", null)
+      .lte("start_date", now)
+      .gte("end_date", now);
+
+    if (error) {
+      // ticket_boost/event_id support may not be migrated onto this DB yet;
+      // treat as "no boosts" rather than failing the whole events list.
+      return new Set();
+    }
+    return new Set((boosts ?? []).map((row) => row.event_id));
+  } catch {
+    return new Set();
+  }
 }
 
 export async function registerForEvent({ eventId, userId }) {

@@ -45,6 +45,19 @@ export const adController = {
     }
   },
 
+  async getAdById(req, res, next) {
+    try {
+      const { id } = req.params;
+      const ad = await adService.getAdById(id);
+      if (!ad) {
+        return res.status(404).json({ success: false, error: "Ad not found" });
+      }
+      res.json({ success: true, data: ad });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getPendingAds(req, res, next) {
     try {
       const ads = await adService.getPendingAds();

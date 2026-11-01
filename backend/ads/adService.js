@@ -24,6 +24,21 @@ function getDailyLimit(adType) {
   }
 }
 
+// Each ad type has its own dedicated surface; only "banner"/"ticket_boost"
+// share the home carousel today.
+function getDefaultPlacement(adType) {
+  switch (adType) {
+    case "popup":
+      return "popup";
+    case "notification":
+      return "notification";
+    case "ticket_boost":
+      return "ticket-boost";
+    default:
+      return "home-banner";
+  }
+}
+
 export const adService = {
   async uploadAdImage(userId, file) {
     if (!userId) throw new ApiError(401, "Unauthorized");
@@ -137,10 +152,11 @@ export const adService = {
       image_url: data.image_url || null,
       target_url: data.target_url || null,
       popup_id: data.popup_id || null,
+      event_id: data.event_id || null,
       scheduled_date: scheduledDate,
       start_time: data.start_time || data.start_date || new Date().toISOString(),
       end_time: data.end_time || data.end_date || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      placement: data.placement || (adType === "popup" ? "popup" : "home-banner"),
+      placement: data.placement || getDefaultPlacement(adType),
       status: "pending",
       impressions: 0,
       clicks: 0,
@@ -230,6 +246,33 @@ export const adService = {
       const end = new Date(ad.end_date || ad.end_time).getTime();
       return start <= t && t <= end;
     });
+  },
+
+  async getAdById(id) {
+    try {
+      const { data: ad, error } = await supabase
+        .from("ads")
+        .select("*")
+        .eq("id", id)
+        .eq("is_active", true)
+        .eq("status", "approved")
+        .maybeSingle();
+
+      if (error) {
+        if (isTableNotFoundError(error)) {
+          const fallback = inMemoryAds.get(id);
+          return fallback && fallback.status === "approved" ? fallback : null;
+        }
+        throw error;
+      }
+      return ad || null;
+    } catch (err) {
+      if (isTableNotFoundError(err)) {
+        const fallback = inMemoryAds.get(id);
+        return fallback && fallback.status === "approved" ? fallback : null;
+      }
+      throw err;
+    }
   },
 
   async getPendingAds() {

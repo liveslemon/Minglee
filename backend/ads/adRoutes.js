@@ -19,3 +19,5 @@ adRoutes.post("/", asyncHandler(adController.createAd));
 adRoutes.get("/", asyncHandler(adController.getActiveAds));
 adRoutes.post("/:id/impression", asyncHandler(adController.trackImpression));
 adRoutes.post("/:id/click", asyncHandler(adController.trackClick));
+// Resolves a single approved ad, e.g. the popup a "notification" ad deep-links to.
+adRoutes.get("/:id", asyncHandler(adController.getAdById));
