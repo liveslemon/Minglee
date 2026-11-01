@@ -189,6 +189,7 @@ export const adService = {
         .from("ads")
         .select("*")
         .eq("is_active", true)
+        .eq("status", "approved")
         .lte("start_date", targetDate)
         .gte("end_date", targetDate);
 
@@ -222,6 +223,7 @@ export const adService = {
     const t = new Date(targetDate).getTime();
     return Array.from(inMemoryAds.values()).filter(ad => {
       if (!ad.is_active) return false;
+      if (ad.status !== "approved") return false;
       if (filters.placement && ad.placement !== filters.placement) return false;
       if (filters.ad_type && ad.ad_type !== filters.ad_type) return false;
       const start = new Date(ad.start_date || ad.start_time).getTime();
