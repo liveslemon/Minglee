@@ -1,4 +1,6 @@
 import "./env.js";
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -26,6 +28,13 @@ export function createApp() {
 
   app.use(routes);
   app.use(errorHandler);
+
+  // Demo-date endpoint – returns ISO string; can be overridden via DEMO_DATE env var
+  app.get("/api/demo-date", (req, res) => {
+    const demoDate = process.env.DEMO_DATE;
+    const now = demoDate ? new Date(demoDate) : new Date();
+    res.json({ demoDate: now.toISOString() });
+  });
 
   return app;
 }
