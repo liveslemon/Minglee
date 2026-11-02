@@ -18,6 +18,8 @@ Important: keep `.env` private (it is ignored by `backend/.gitignore`).
 
 The canonical schema and upgrade SQL is in `backend/schema.sql`. Review and apply it manually in Supabase; the application does not execute schema migrations on startup. Other SQL schema files are retained as historical references and should not be applied separately.
 
+For weekly active users, apply only `backend/migrations/20261028_weekly_active_users.sql` using the Supabase SQL Editor. This small, repeat-safe migration creates the activity table and index, then enables row-level security; it does not modify user data or run the rest of the canonical schema.
+
 For push notification subscriptions, apply the additive migration in `migrations/20261008_push_subscriptions.sql` using the Supabase SQL Editor. This migration only creates the `push_subscriptions` table and its user index; it does not apply unrelated canonical schema changes.
 
 Ad image uploads use the public Supabase Storage bucket configured by `SUPABASE_ADS_BUCKET`, falling back to `SUPABASE_USER_PHOTOS_BUCKET`. The bucket must exist and allow public reads for the returned image URLs to display in the app.
@@ -56,6 +58,23 @@ Requires the `x-admin-secret` header to match the server's `ADMIN_SECRET`. Creat
 Request:
 ```json
 { "title": "Update", "body": "An update from Minglee", "url": "/home", "targetAudience": "all" }
+```
+
+### `GET /admin/stats/weekly-active-users`
+Requires the `x-admin-secret` header to match the server's `ADMIN_SECRET`. Returns distinct weekly active-user counts for the last 12 Monday-to-Sunday UTC weeks, including the current week. Apply `backend/migrations/20261028_weekly_active_users.sql` in Supabase before using this endpoint, and configure `SUPABASE_SERVICE_ROLE_KEY` so the backend can access the row-level-security-protected activity table.
+
+Response:
+```json
+{
+  "success": true,
+  "weekStart": "2026-10-26",
+  "weekEnd": "2026-11-01",
+  "weeklyActiveUsers": 42,
+  "weeks": [
+    { "weekStart": "2026-10-19", "weekEnd": "2026-10-25", "weeklyActiveUsers": 37 },
+    { "weekStart": "2026-10-26", "weekEnd": "2026-11-01", "weeklyActiveUsers": 42 }
+  ]
+}
 ```
 
 ### `POST /profile` (Auth)

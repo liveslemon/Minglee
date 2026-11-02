@@ -26,6 +26,18 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS flag_reason TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+CREATE TABLE IF NOT EXISTS public.weekly_active_users (
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  week_start DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, week_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_active_users_week_start
+  ON public.weekly_active_users(week_start);
+
+ALTER TABLE public.weekly_active_users ENABLE ROW LEVEL SECURITY;
+
 DO $$
 BEGIN
   IF EXISTS (
