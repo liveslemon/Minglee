@@ -83,19 +83,24 @@ export async function fetchEligibleUsers() {
 }
 
 export async function getPastMatches() {
-  const { data, error } = await supabase
-    .from("matches")
-    .select("user1_id, user2_id");
+  const [{ data: matches, error }, { data: blocks, error: blockErr }] = await Promise.all([
+    supabase.from("matches").select("user1_id, user2_id"),
+    supabase.from("user_blocks").select("blocker_id, blocked_id"),
+  ]);
 
   if (error) throw dbApiError(500, "Error fetching past matches", error);
-  
+  if (blockErr) throw dbApiError(500, "Error fetching user blocks", blockErr);
+
   const pastPairs = new Set();
-  if (data) {
-    for (const match of data) {
-      // Store a unique key for the pair regardless of order
-      const key = [match.user1_id, match.user2_id].sort().join("|");
-      pastPairs.add(key);
-    }
+  for (const match of matches || []) {
+    // Store a unique key for the pair regardless of order
+    const key = [match.user1_id, match.user2_id].sort().join("|");
+    pastPairs.add(key);
+  }
+  // A block is a dealbreaker in either direction, same as a past pairing.
+  for (const block of blocks || []) {
+    const key = [block.blocker_id, block.blocked_id].sort().join("|");
+    pastPairs.add(key);
   }
   return pastPairs;
 }

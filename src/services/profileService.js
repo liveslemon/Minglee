@@ -208,6 +208,11 @@ export async function refreshOnboardingCompletion(userId) {
 }
 
 export async function getMeProfile(userId) {
+  // Keep the cached onboarding_completed/current_step columns honest in
+  // case preference/profile rows were cleared out-of-band (e.g. by an
+  // admin) since they were last recomputed.
+  await refreshOnboardingCompletion(userId);
+
   const { data: user, error: userErr } = await supabase
     .from("users")
     .select(

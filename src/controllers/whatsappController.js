@@ -35,7 +35,6 @@ export const verifyWebhook = (req, res) => {
   const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 
   if (mode === "subscribe" && token === META_VERIFY_TOKEN) {
-    console.log("WEBHOOK VERIFY OK");
     return res.status(200).send(challenge);
   } else {
     console.warn("WEBHOOK VERIFY FAILED");
@@ -44,8 +43,6 @@ export const verifyWebhook = (req, res) => {
 };
 
 export const receiveWebhook = async (req, res) => {
-  console.log("WEBHOOK HIT POST /webhook");
-
   if (!verifySignature(req)) {
     console.error("WEBHOOK POST signature FAILED");
     return res.status(403).send("Forbidden");

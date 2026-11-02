@@ -30,3 +30,7 @@ adminRoutes.post("/matching/run", asyncHandler(adminPlatformController.runMatchi
 
 // Push Notifications Dispatcher
 adminRoutes.post("/notifications/send", asyncHandler(adminNotificationController.send));
+
+// WhatsApp Inquiries Needing a Human Reply
+adminRoutes.get("/whatsapp-inquiries/pending", asyncHandler(adminPlatformController.getPendingWhatsAppInquiries));
+adminRoutes.post("/whatsapp-inquiries/:id/resolve", asyncHandler(adminPlatformController.resolveWhatsAppInquiry));

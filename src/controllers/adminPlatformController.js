@@ -251,7 +251,27 @@ export const adminPlatformController = {
 
   async getFlaggedUsers(req, res) {
     try {
-      const { data: flaggedUsers, error } = await supabase
+      // Surface two groups of users here: admin-flagged ones, and anyone with
+      // an open member report against them (even if nobody has flagged them
+      // yet) — the "reports stay listed until resolved" promise in the UI.
+      const { data: openReports, error: reportsErr } = await supabase
+        .from("reports")
+        .select("reported_user_id, reason")
+        .eq("status", "open");
+
+      if (reportsErr && reportsErr.code !== "42P01") throw reportsErr;
+
+      const reportsByUser = new Map();
+      for (const report of openReports || []) {
+        const entry = reportsByUser.get(report.reported_user_id) || { count: 0, reasons: [] };
+        entry.count += 1;
+        if (!entry.reasons.includes(report.reason)) entry.reasons.push(report.reason);
+        reportsByUser.set(report.reported_user_id, entry);
+      }
+
+      const reportedUserIds = [...reportsByUser.keys()];
+
+      const { data: users, error } = await supabase
         .from("users")
         .select(`
           id,
@@ -282,7 +302,11 @@ export const adminPlatformController = {
             upload_order
           )
         `)
-        .eq("is_flagged", true);
+        .or(
+          reportedUserIds.length > 0
+            ? `is_flagged.eq.true,id.in.(${reportedUserIds.join(",")})`
+            : "is_flagged.eq.true",
+        );
 
       if (error) {
         if (error.code === "PGRST204" || (error.message && error.message.includes("column"))) {
@@ -291,7 +315,16 @@ export const adminPlatformController = {
         throw error;
       }
 
-      res.json({ success: true, data: flaggedUsers || [] });
+      const flaggedUsers = (users || []).map((user) => {
+        const reportInfo = reportsByUser.get(user.id);
+        return {
+          ...user,
+          open_report_count: reportInfo?.count || 0,
+          open_report_reasons: reportInfo?.reasons || [],
+        };
+      });
+
+      res.json({ success: true, data: flaggedUsers });
     } catch (err) {
       console.error("Error fetching flagged users:", err);
       res.json({ success: true, data: [] });
@@ -315,6 +348,20 @@ export const adminPlatformController = {
         .single();
 
       if (error) throw error;
+
+      // Flagging the user is the resolution: close out the reports that
+      // prompted it so they stop showing as "open".
+      if (is_flagged) {
+        const { error: reportsErr } = await supabase
+          .from("reports")
+          .update({ status: "resolved" })
+          .eq("reported_user_id", id)
+          .eq("status", "open");
+        if (reportsErr && reportsErr.code !== "42P01") {
+          console.error("Could not resolve reports for flagged user:", reportsErr);
+        }
+      }
+
       res.json({ success: true, data });
     } catch (err) {
       throw dbApiError(400, "Unable to update user flag status", err);
@@ -324,5 +371,30 @@ export const adminPlatformController = {
   async runMatching(req, res) {
     await runMatchingCycle();
     res.json({ success: true, message: "Matching cycle executed successfully" });
+  },
+
+  async getPendingWhatsAppInquiries(req, res) {
+    const { data, error } = await supabase
+      .from("whatsapp_inquiries")
+      .select("id, whatsapp_number, message, status, created_at")
+      .eq("status", "open")
+      .order("created_at", { ascending: false });
+
+    if (error) throw dbApiError(500, "Unable to fetch WhatsApp inquiries", error);
+    res.json({ success: true, data: data || [] });
+  },
+
+  async resolveWhatsAppInquiry(req, res) {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from("whatsapp_inquiries")
+      .update({ status: "resolved", resolved_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw dbApiError(500, "Unable to update WhatsApp inquiry", error);
+    res.json({ success: true, data });
   },
 };

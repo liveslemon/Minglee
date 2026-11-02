@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { supabase } from "../supabase.js";
 import { ApiError, dbApiError } from "../utils/apiError.js";
+import { refreshOnboardingCompletion } from "./profileService.js";
 
 export async function signup({ name, whatsapp_number, password }) {
   const passwordHash = await bcrypt.hash(password, 12);
@@ -31,8 +32,24 @@ export async function login({ whatsapp_number, password }) {
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) throw new ApiError(401, "Invalid credentials");
 
+  // The onboarding_completed/current_step columns are a cache that only
+  // gets recomputed when profile/preference endpoints are hit — if an admin
+  // clears those rows directly in the DB the cache goes stale, so recompute
+  // it live on every login rather than trusting what's on the row.
+  await refreshOnboardingCompletion(user.id);
+  const { data: refreshed, error: refreshErr } = await supabase
+    .from("users")
+    .select("onboarding_completed,current_step")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (refreshErr) throw dbApiError(400, "Database error", refreshErr);
+
   // Don't leak password_hash
   // eslint-disable-next-line no-unused-vars
   const { password_hash: _passwordHash, ...safeUser } = user;
-  return safeUser;
+  return {
+    ...safeUser,
+    onboarding_completed: refreshed?.onboarding_completed ?? safeUser.onboarding_completed,
+    current_step: refreshed?.current_step ?? safeUser.current_step,
+  };
 }
