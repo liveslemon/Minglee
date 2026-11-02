@@ -13,9 +13,7 @@ adRoutes.post(
   asyncHandler(adController.uploadImage)
 );
 adRoutes.get("/availability/:ad_type/:date", asyncHandler(adController.checkAvailability));
-adRoutes.get("/pending", asyncHandler(adController.getPendingAds));
-adRoutes.post("/:id/review", asyncHandler(adController.reviewAd));
-adRoutes.post("/", asyncHandler(adController.createAd));
+adRoutes.post("/", authMiddleware, asyncHandler(adController.createAd));
 adRoutes.get("/", asyncHandler(adController.getActiveAds));
 adRoutes.post("/:id/impression", asyncHandler(adController.trackImpression));
 adRoutes.post("/:id/click", asyncHandler(adController.trackClick));

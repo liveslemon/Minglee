@@ -70,10 +70,19 @@ export async function createEvent(input) {
 }
 
 export async function listEvents() {
-  const { data: events, error } = await supabase
+  let { data: events, error } = await supabase
     .from("events")
     .select("*")
+    .eq("status", "approved")
     .order("event_day", { ascending: true });
+
+  if (error && error.code === "42703") {
+    // "status" column not yet migrated onto this DB; fall back to the full list.
+    ({ data: events, error } = await supabase
+      .from("events")
+      .select("*")
+      .order("event_day", { ascending: true }));
+  }
 
   if (error) {
     throw new ApiError(400, "Unable to fetch events", {

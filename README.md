@@ -20,7 +20,7 @@ The canonical schema and upgrade SQL is in `backend/schema.sql`. Review and appl
 
 For weekly active users, apply only `backend/migrations/20261028_weekly_active_users.sql` using the Supabase SQL Editor. This small, repeat-safe migration creates the activity table and index, then enables row-level security; it does not modify user data or run the rest of the canonical schema.
 
-For push notification subscriptions, apply the additive migration in `migrations/20261008_push_subscriptions.sql` using the Supabase SQL Editor. This migration only creates the `push_subscriptions` table and its user index; it does not apply unrelated canonical schema changes.
+For push notification subscriptions, the `push_subscriptions` table (and its user index/RLS policy) is defined in `backend/schema.sql`. Apply it via the Supabase SQL Editor if it hasn't been run against the target project yet.
 
 Ad image uploads use the public Supabase Storage bucket configured by `SUPABASE_ADS_BUCKET`, falling back to `SUPABASE_USER_PHOTOS_BUCKET`. The bucket must exist and allow public reads for the returned image URLs to display in the app.
 

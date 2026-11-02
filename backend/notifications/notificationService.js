@@ -39,7 +39,7 @@ export const notificationService = {
       ) {
         throw new ApiError(
           503,
-          "Push subscription storage is not configured. Apply backend/migrations/20261008_push_subscriptions.sql in the Supabase SQL Editor."
+          "Push subscription storage is not configured. Apply the push_subscriptions table from backend/schema.sql in the Supabase SQL Editor."
         );
       }
       throw error;

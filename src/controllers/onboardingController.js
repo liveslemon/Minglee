@@ -423,7 +423,7 @@ export async function uploadPhoto(req, res) {
     );
   }
 
-  // Enforce max 3 photos per user
+  // Enforce max 2 photos per user
   const { count, error: countErr } = await supabase
     .from("user_photos")
     .select("id", { count: "exact", head: true })

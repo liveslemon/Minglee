@@ -208,10 +208,19 @@ export const adminPlatformController = {
 
   async getPendingTickets(req, res) {
     try {
-      const { data: events, error } = await supabase
+      let { data: events, error } = await supabase
         .from("events")
         .select("*")
+        .eq("status", "pending")
         .order("created_at", { ascending: false });
+
+      if (error && error.code === "42703") {
+        // "status" column not yet migrated onto this DB; fall back to the full list.
+        ({ data: events, error } = await supabase
+          .from("events")
+          .select("*")
+          .order("created_at", { ascending: false }));
+      }
 
       if (error) throw error;
       res.json({ success: true, data: events || [] });

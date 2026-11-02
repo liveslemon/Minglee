@@ -1,5 +1,5 @@
 import { adService } from "./adService.js";
-import { createAdSchema, reviewAdSchema } from "./adValidator.js";
+import { createAdSchema } from "./adValidator.js";
 
 export const adController = {
   async uploadImage(req, res, next) {
@@ -53,26 +53,6 @@ export const adController = {
         return res.status(404).json({ success: false, error: "Ad not found" });
       }
       res.json({ success: true, data: ad });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async getPendingAds(req, res, next) {
-    try {
-      const ads = await adService.getPendingAds();
-      res.json({ success: true, data: ads });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async reviewAd(req, res, next) {
-    try {
-      const { id } = req.params;
-      const { action, rejection_reason } = reviewAdSchema.parse(req.body);
-      const updatedAd = await adService.reviewAd(id, action, rejection_reason);
-      res.json({ success: true, data: updatedAd });
     } catch (error) {
       next(error);
     }
