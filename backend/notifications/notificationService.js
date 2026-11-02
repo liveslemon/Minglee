@@ -1,6 +1,6 @@
 import { supabase } from "../../src/supabase.js";
 import crypto from "crypto";
-import { ApiError } from "../../src/utils/apiError.js";
+import { dbApiError } from "../../src/utils/apiError.js";
 
 const inMemoryNotifications = new Map();
 
@@ -37,10 +37,7 @@ export const notificationService = {
         error.code === "42P01" ||
         error.message?.includes("push_subscriptions")
       ) {
-        throw new ApiError(
-          503,
-          "Push subscription storage is not configured. Apply the push_subscriptions table from backend/schema.sql in the Supabase SQL Editor."
-        );
+        throw dbApiError(503, "Push subscription storage is not configured", error);
       }
       throw error;
     }

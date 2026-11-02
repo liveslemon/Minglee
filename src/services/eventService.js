@@ -1,5 +1,5 @@
 import { supabase } from "../supabase.js";
-import { ApiError } from "../utils/apiError.js";
+import { ApiError, dbApiError } from "../utils/apiError.js";
 import { randomUUID } from "node:crypto";
 
 function mapEvent(event) {
@@ -62,10 +62,7 @@ export async function createEvent(input) {
     }
     return mapEvent({ ...data, attendee_count: 0, paid_attendees_count: 0, total_revenue: 0, host_payout_amount: 0 });
   } catch (error) {
-    throw new ApiError(400, "Unable to create event", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to create event", error);
   }
 }
 
@@ -85,10 +82,7 @@ export async function listEvents() {
   }
 
   if (error) {
-    throw new ApiError(400, "Unable to fetch events", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to fetch events", error);
   }
 
   const safeEvents = events ?? [];
@@ -99,10 +93,7 @@ export async function listEvents() {
     .select("event_id");
 
   if (attendeeError) {
-    throw new ApiError(400, "Unable to fetch event attendees", {
-      message: attendeeError.message,
-      details: attendeeError.details,
-    });
+    throw dbApiError(400, "Unable to fetch event attendees", attendeeError);
   }
 
   const attendeeCounts = new Map();
@@ -119,10 +110,7 @@ export async function listEvents() {
     .eq("status", "success");
 
   if (paymentError) {
-    throw new ApiError(400, "Unable to fetch event payments", {
-      message: paymentError.message,
-      details: paymentError.details,
-    });
+    throw dbApiError(400, "Unable to fetch event payments", paymentError);
   }
 
   const paidCounts = new Map();
@@ -192,10 +180,7 @@ export async function registerForEvent({ eventId, userId }) {
     .maybeSingle();
 
   if (eventError) {
-    throw new ApiError(400, "Unable to check event", {
-      message: eventError.message,
-      details: eventError.details,
-    });
+    throw dbApiError(400, "Unable to check event", eventError);
   }
 
   if (!event) {
@@ -214,10 +199,7 @@ export async function registerForEvent({ eventId, userId }) {
     .maybeSingle();
 
   if (existingError) {
-    throw new ApiError(400, "Unable to check registration", {
-      message: existingError.message,
-      details: existingError.details,
-    });
+    throw dbApiError(400, "Unable to check registration", existingError);
   }
 
   if (existing) {
@@ -239,10 +221,7 @@ export async function registerForEvent({ eventId, userId }) {
     if (insertError.code === "23505") {
       throw new ApiError(409, "User already registered for this event");
     }
-    throw new ApiError(400, "Unable to register for event", {
-      message: insertError.message,
-      details: insertError.details,
-    });
+    throw dbApiError(400, "Unable to register for event", insertError);
   }
 
   const { count, error: countError } = await supabase
@@ -251,10 +230,7 @@ export async function registerForEvent({ eventId, userId }) {
     .eq("event_id", eventId);
 
   if (countError) {
-    throw new ApiError(400, "Unable to count event attendees", {
-      message: countError.message,
-      details: countError.details,
-    });
+    throw dbApiError(400, "Unable to count event attendees", countError);
   }
 
   return {

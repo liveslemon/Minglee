@@ -6,7 +6,7 @@ import {
   profileSchema,
 } from "../validators/onboardingSchemas.js";
 import * as profileService from "../services/profileService.js";
-import { ApiError } from "../utils/apiError.js";
+import { ApiError, dbApiError } from "../utils/apiError.js";
 import { supabase } from "../supabase.js";
 import path from "path";
 import { z } from "zod";
@@ -451,7 +451,7 @@ export async function uploadPhoto(req, res) {
     });
 
   if (error) {
-    throw new ApiError(500, `Supabase Storage Error: ${error.message}`);
+    throw dbApiError(500, "Could not store the uploaded photo", error);
   }
 
   const { data: publicUrlData } = supabase.storage

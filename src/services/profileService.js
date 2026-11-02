@@ -1,5 +1,5 @@
 import { supabase } from "../supabase.js";
-import { ApiError } from "../utils/apiError.js";
+import { dbApiError } from "../utils/apiError.js";
 
 function hasText(value) {
   return typeof value === "string" && value.trim() !== "";
@@ -46,10 +46,7 @@ export async function upsertProfile(userId, profileInput) {
     .single();
 
   if (error)
-    throw new ApiError(400, "Unable to save profile", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to save profile", error);
   await refreshOnboardingCompletion(userId);
   return data;
 }
@@ -67,10 +64,7 @@ export async function upsertPreferences(userId, prefsInput) {
     .single();
 
   if (error)
-    throw new ApiError(400, "Unable to save preferences", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to save preferences", error);
   await refreshOnboardingCompletion(userId);
   return data;
 }
@@ -83,10 +77,7 @@ export async function replaceFocuses(userId, focuses) {
     .delete()
     .eq("user_id", userId);
   if (delError)
-    throw new ApiError(400, "Unable to reset focuses", {
-      message: delError.message,
-      details: delError.details,
-    });
+    throw dbApiError(400, "Unable to reset focuses", delError);
 
   if (uniqueFocuses.length === 0) return [];
 
@@ -97,10 +88,7 @@ export async function replaceFocuses(userId, focuses) {
     );
 
   if (error)
-    throw new ApiError(400, "Unable to save focuses", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to save focuses", error);
 
   // Return the payload shape expected by controllers without requiring select policy.
   return uniqueFocuses.map((focus) => ({ focus }));
@@ -112,10 +100,7 @@ export async function replacePreferredBuilds(userId, builds) {
     .delete()
     .eq("user_id", userId);
   if (delError)
-    throw new ApiError(400, "Unable to reset preferred builds", {
-      message: delError.message,
-      details: delError.details,
-    });
+    throw dbApiError(400, "Unable to reset preferred builds", delError);
 
   if (builds.length === 0) return [];
 
@@ -127,10 +112,7 @@ export async function replacePreferredBuilds(userId, builds) {
     .select("id,preferred_build");
 
   if (error)
-    throw new ApiError(400, "Unable to save preferred builds", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to save preferred builds", error);
   const savedBuilds = data ?? [];
   await refreshOnboardingCompletion(userId);
   return savedBuilds;
@@ -142,10 +124,7 @@ export async function replacePhotos(userId, photos) {
     .delete()
     .eq("user_id", userId);
   if (delError)
-    throw new ApiError(400, "Unable to reset photos", {
-      message: delError.message,
-      details: delError.details,
-    });
+    throw dbApiError(400, "Unable to reset photos", delError);
 
   const { data, error } = await supabase
     .from("user_photos")
@@ -162,10 +141,7 @@ export async function replacePhotos(userId, photos) {
     .order("upload_order", { ascending: true });
 
   if (error)
-    throw new ApiError(400, "Unable to save photos", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to save photos", error);
   return data ?? [];
 }
 
@@ -203,10 +179,7 @@ export async function refreshOnboardingCompletion(userId) {
 
   const anyErr = userErr || profileErr || prefErr || buildErr;
   if (anyErr) {
-    throw new ApiError(400, "Unable to refresh onboarding status", {
-      message: anyErr.message,
-      details: anyErr.details,
-    });
+    throw dbApiError(400, "Unable to refresh onboarding status", anyErr);
   }
 
   const onboardingCompleted = isUserReadyForMatching({
@@ -230,10 +203,7 @@ export async function refreshOnboardingCompletion(userId) {
     .eq("id", userId);
 
   if (error) {
-    throw new ApiError(400, "Unable to update onboarding completion", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to update onboarding completion", error);
   }
 }
 
@@ -246,10 +216,7 @@ export async function getMeProfile(userId) {
     .eq("id", userId)
     .maybeSingle();
   if (userErr)
-    throw new ApiError(400, "Database error", {
-      message: userErr.message,
-      details: userErr.details,
-    });
+    throw dbApiError(400, "Database error", userErr);
   if (!user) return null;
 
   const [
@@ -283,10 +250,7 @@ export async function getMeProfile(userId) {
 
   const anyErr = profileErr || prefErr || focusErr || buildErr || photoErr;
   if (anyErr)
-    throw new ApiError(400, "Database error", {
-      message: anyErr.message,
-      details: anyErr.details,
-    });
+    throw dbApiError(400, "Database error", anyErr);
 
   return {
     user,
@@ -307,9 +271,6 @@ export async function updateMatchingPreference(userId, readyToBeMatched) {
     .single();
 
   if (error)
-    throw new ApiError(400, "Unable to update matching preference", {
-      message: error.message,
-      details: error.details,
-    });
+    throw dbApiError(400, "Unable to update matching preference", error);
   return data;
 }

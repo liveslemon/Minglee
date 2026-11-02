@@ -1,7 +1,7 @@
 import { supabase } from "../../src/supabase.js";
 import crypto from "crypto";
 import path from "node:path";
-import { ApiError } from "../../src/utils/apiError.js";
+import { ApiError, dbApiError } from "../../src/utils/apiError.js";
 
 const inMemoryAds = new Map();
 
@@ -61,9 +61,7 @@ export const adService = {
       });
 
     if (error) {
-      throw new ApiError(502, "Could not store the ad image", {
-        storage: error.message
-      });
+      throw dbApiError(502, "Could not store the ad image", error);
     }
 
     const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);

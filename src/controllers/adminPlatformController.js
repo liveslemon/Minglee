@@ -1,5 +1,5 @@
 import { supabase } from "../supabase.js";
-import { ApiError } from "../utils/apiError.js";
+import { ApiError, dbApiError } from "../utils/apiError.js";
 import { runMatchingCycle } from "../services/matchingService.js";
 import { adService } from "../../backend/ads/adService.js";
 import { getUtcWeekStart } from "../services/weeklyActiveUsersService.js";
@@ -317,7 +317,7 @@ export const adminPlatformController = {
       if (error) throw error;
       res.json({ success: true, data });
     } catch (err) {
-      throw new ApiError(400, "Unable to update user flag status", { details: err.message });
+      throw dbApiError(400, "Unable to update user flag status", err);
     }
   },
 

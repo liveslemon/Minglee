@@ -1,5 +1,5 @@
 import { supabase } from "../supabase.js";
-import { ApiError } from "../utils/apiError.js";
+import { dbApiError } from "../utils/apiError.js";
 
 // Helper to chunk arrays for Supabase 'in' queries to avoid URL length limits
 function chunkArray(array, size) {
@@ -17,7 +17,7 @@ export async function fetchEligibleUsers() {
     .eq("onboarding_completed", true)
     .eq("ready_to_be_matched", true);
 
-  if (userErr) throw new ApiError(500, "Error fetching users for matching", { details: userErr });
+  if (userErr) throw dbApiError(500, "Error fetching users for matching", userErr);
   if (!users || users.length === 0) return { males: [], females: [] };
 
   const userIds = users.map((u) => u.id);
@@ -87,7 +87,7 @@ export async function getPastMatches() {
     .from("matches")
     .select("user1_id, user2_id");
 
-  if (error) throw new ApiError(500, "Error fetching past matches", { details: error });
+  if (error) throw dbApiError(500, "Error fetching past matches", error);
   
   const pastPairs = new Set();
   if (data) {
@@ -262,7 +262,7 @@ export async function saveMatches(matches) {
 
   if (error) {
     console.error("Error saving new matches:", error);
-    throw new ApiError(500, "Unable to save matches", { details: error });
+    throw dbApiError(500, "Unable to save matches", error);
   }
 }
 
